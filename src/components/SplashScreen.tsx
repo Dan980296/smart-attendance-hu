@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { GraduationCap, QrCode } from "lucide-react";
-import universityLogo from "@/assets/university-logo.png";
+
 
 interface SplashScreenProps {
   onStart: () => void;
@@ -10,14 +10,6 @@ const SplashScreen = ({ onStart }: SplashScreenProps) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex flex-col items-center justify-center p-6">
       <div className="text-center max-w-md w-full space-y-8">
-        {/* University Logo */}
-        <div className="flex justify-center mb-8">
-          <img 
-            src={universityLogo} 
-            alt="Hawassa University Logo" 
-            className="w-24 h-24 object-contain"
-          />
-        </div>
 
         {/* App Icon */}
         <div className="flex justify-center mb-6">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   Settings,
   FileText
 } from "lucide-react";
+import QrScanner from "qr-scanner";
 
 interface MainDashboardProps {
   onGenerateQR: () => void;
@@ -27,14 +28,62 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
     section: "",
     course: ""
   });
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const qrScannerRef = useRef<QrScanner | null>(null);
 
   const handleInputChange = (field: string, value: string) => {
     setSessionData(prev => ({ ...prev, [field]: value }));
   };
 
-  const toggleScanning = () => {
-    setIsScanning(!isScanning);
+  const handleQrScanResult = (result: QrScanner.ScanResult) => {
+    console.log('QR Code detected:', result.data);
+    // Play success beep
+    const successAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6Ej+a2+Jq');
+    successAudio.play().catch(() => {});
   };
+
+  const handleQrScanError = (error: string | Error) => {
+    console.log('QR scan error:', error);
+  };
+
+  const toggleScanning = async () => {
+    if (!isScanning) {
+      try {
+        if (videoRef.current) {
+          const qrScanner = new QrScanner(
+            videoRef.current,
+            handleQrScanResult,
+            {
+              onDecodeError: handleQrScanError,
+              highlightScanRegion: true,
+              highlightCodeOutline: true,
+            }
+          );
+          qrScannerRef.current = qrScanner;
+          await qrScanner.start();
+          setIsScanning(true);
+        }
+      } catch (error) {
+        console.error('Error starting camera:', error);
+      }
+    } else {
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+        qrScannerRef.current = null;
+      }
+      setIsScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (qrScannerRef.current) {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -106,17 +155,20 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Camera Preview Placeholder */}
-            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border-2 border-dashed border-border">
-              {isScanning ? (
-                <div className="text-center">
-                  <Camera className="w-12 h-12 text-primary mx-auto mb-2 animate-pulse" />
-                  <p className="text-sm text-muted-foreground">Camera Active</p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Camera Preview</p>
+            {/* Camera Preview */}
+            <div className="aspect-video bg-muted rounded-lg overflow-hidden border-2 border-dashed border-border relative">
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                playsInline
+                muted
+              />
+              {!isScanning && (
+                <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                  <div className="text-center">
+                    <Camera className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Camera Preview</p>
+                  </div>
                 </div>
               )}
             </div>
