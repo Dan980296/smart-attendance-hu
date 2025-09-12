@@ -40,6 +40,8 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
         })
       };
       setGeneratedCodes([newCode]);
+      // Clear the form for next manual entry
+      setSingleStudent({ name: "", id: "" });
     }
   };
 
