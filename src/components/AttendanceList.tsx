@@ -65,6 +65,30 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
   const presentCount = attendanceRecords.filter(r => r.status === "present").length;
   const lateCount = attendanceRecords.filter(r => r.status === "late").length;
 
+  const handleExportCSV = () => {
+    const headers = ['Student Name', 'Student ID', 'Status', 'Scan Time', 'Scan Date'];
+    const csvContent = [
+      headers.join(','),
+      ...attendanceRecords.map(record => [
+        `"${record.studentName}"`,
+        record.studentId,
+        record.status,
+        `"${record.scanTime}"`,
+        record.scanDate
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `attendance_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -127,7 +151,10 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
         </div>
 
         {/* Export Button */}
-        <Button className="w-full bg-success hover:bg-success/90">
+        <Button 
+          className="w-full bg-success hover:bg-success/90"
+          onClick={handleExportCSV}
+        >
           <Download className="w-4 h-4 mr-2" />
           Export to CSV/Excel
         </Button>
