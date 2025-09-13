@@ -39,7 +39,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
           timestamp: Date.now()
         })
       };
-      setGeneratedCodes([newCode]);
+      setGeneratedCodes(prev => [...prev, newCode]);
       // Clear the form for next manual entry
       setSingleStudent({ name: "", id: "" });
     }
