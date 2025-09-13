@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,10 @@ import {
   Users,
   ArrowLeft,
   Plus,
-  File
+  File,
+  Share2
 } from "lucide-react";
+import QRCode from "qrcode";
 
 interface QRGeneratorProps {
   onBack: () => void;
@@ -28,16 +30,69 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
 
-  const handleSingleGenerate = () => {
+  // Generate QR code image from data
+  const generateQRImage = async (data: string): Promise<string> => {
+    try {
+      const qrDataURL = await QRCode.toDataURL(data, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      return qrDataURL;
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      return '';
+    }
+  };
+
+  // Download QR code as image
+  const downloadQRCode = (qrImage: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = qrImage;
+    link.download = `${filename}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Share QR code using Web Share API if available
+  const shareQRCode = async (qrImage: string, studentName: string) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `QR Code for ${studentName}`,
+          text: `Attendance QR code for ${studentName}`,
+          url: qrImage
+        });
+      } catch (error) {
+        console.error('Error sharing:', error);
+        // Fallback to download
+        downloadQRCode(qrImage, `${studentName}-qr`);
+      }
+    } else {
+      // Fallback to download
+      downloadQRCode(qrImage, `${studentName}-qr`);
+    }
+  };
+
+  const handleSingleGenerate = async () => {
     if (singleStudent.name && singleStudent.id) {
+      const qrData = JSON.stringify({
+        studentId: singleStudent.id,
+        studentName: singleStudent.name,
+        timestamp: Date.now()
+      });
+      
+      const qrImage = await generateQRImage(qrData);
+      
       const newCode = {
         id: singleStudent.id,
         name: singleStudent.name,
-        qrData: JSON.stringify({
-          studentId: singleStudent.id,
-          studentName: singleStudent.name,
-          timestamp: Date.now()
-        })
+        qrData,
+        qrImage
       };
       setGeneratedCodes(prev => [...prev, newCode]);
       // Clear the form for next manual entry
@@ -45,7 +100,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setBatchFile(file);
@@ -56,15 +111,23 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
         { id: "HU003", name: "Dawit Haile" },
       ];
       
-      const codes = sampleStudents.map(student => ({
-        id: student.id,
-        name: student.name,
-        qrData: JSON.stringify({
-          studentId: student.id,
-          studentName: student.name,
-          timestamp: Date.now()
+      const codes = await Promise.all(
+        sampleStudents.map(async (student) => {
+          const qrData = JSON.stringify({
+            studentId: student.id,
+            studentName: student.name,
+            timestamp: Date.now()
+          });
+          const qrImage = await generateQRImage(qrData);
+          
+          return {
+            id: student.id,
+            name: student.name,
+            qrData,
+            qrImage
+          };
         })
-      }));
+      );
       
       setGeneratedCodes(codes);
     }
@@ -198,14 +261,41 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
             <CardContent>
               <div className="space-y-3">
                 {generatedCodes.map((code, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div>
-                      <p className="font-medium">{code.name}</p>
-                      <p className="text-sm text-muted-foreground">ID: {code.id}</p>
+                  <div key={index} className="p-4 bg-muted rounded-lg">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-medium">{code.name}</p>
+                        <p className="text-sm text-muted-foreground">ID: {code.id}</p>
+                      </div>
                     </div>
-                    <div className="w-12 h-12 bg-primary rounded flex items-center justify-center">
-                      <QrCode className="w-8 h-8 text-primary-foreground" />
-                    </div>
+                    {code.qrImage && (
+                      <div className="flex flex-col items-center space-y-3">
+                        <img 
+                          src={code.qrImage} 
+                          alt={`QR Code for ${code.name}`}
+                          className="w-32 h-32 border rounded"
+                        />
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={() => downloadQRCode(code.qrImage, `${code.name}-qr`)}
+                            className="flex-1"
+                          >
+                            <Download className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => shareQRCode(code.qrImage, code.name)}
+                            className="flex-1"
+                          >
+                            <Share2 className="w-4 h-4 mr-1" />
+                            Share
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
