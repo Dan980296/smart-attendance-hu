@@ -1,12 +1,12 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.08d1a202178c437aa77410f98fdc37f8',
+  appId: 'com.hu.smartattendance',   // change to your unique package name
   appName: 'smart-attendance-hu',
   webDir: 'dist',
+  bundledWebRuntime: false,
   server: {
-    url: 'https://08d1a202-178c-437a-a774-10f98fdc37f8.lovableproject.com?forceHideBadge=true',
-    cleartext: true
+    androidScheme: 'https'
   }
 };
 
