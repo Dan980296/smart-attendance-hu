@@ -14,7 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance_records: {
+        Row: {
+          created_at: string
+          id: string
+          scan_date: string
+          scan_time: string
+          session_id: string
+          status: string
+          student_id: string
+          student_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          scan_date?: string
+          scan_time?: string
+          session_id: string
+          status?: string
+          student_id: string
+          student_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          scan_date?: string
+          scan_time?: string
+          session_id?: string
+          status?: string
+          student_id?: string
+          student_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sessions: {
+        Row: {
+          college: string
+          course: string
+          created_at: string
+          id: string
+          instructor: string
+          section: string
+          session_date: string
+          updated_at: string
+        }
+        Insert: {
+          college: string
+          course: string
+          created_at?: string
+          id?: string
+          instructor: string
+          section: string
+          session_date?: string
+          updated_at?: string
+        }
+        Update: {
+          college?: string
+          course?: string
+          created_at?: string
+          id?: string
+          instructor?: string
+          section?: string
+          session_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import {
   Filter
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface AttendanceListProps {
   onBack: () => void;
@@ -26,36 +28,88 @@ interface AttendanceRecord {
   status: "present" | "late";
 }
 
+interface SessionInfo {
+  id: string;
+  college: string;
+  instructor: string;
+  section: string;
+  course: string;
+  session_date: string;
+}
+
 const AttendanceList = ({ onBack }: AttendanceListProps) => {
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Sample attendance data
-  const [attendanceRecords] = useState<AttendanceRecord[]>([
-    {
-      id: "1",
-      studentName: "Abebe Kebede",
-      studentId: "HU001",
-      scanTime: "09:15 AM",
-      scanDate: "2024-09-12",
-      status: "present"
-    },
-    {
-      id: "2",
-      studentName: "Almaz Tadesse",
-      studentId: "HU002",
-      scanTime: "09:18 AM",
-      scanDate: "2024-09-12",
-      status: "present"
-    },
-    {
-      id: "3",
-      studentName: "Dawit Haile",
-      studentId: "HU003",
-      scanTime: "09:25 AM",
-      scanDate: "2024-09-12",
-      status: "late"
-    }
-  ]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  // Load attendance data from database
+  useEffect(() => {
+    const loadAttendanceData = async () => {
+      try {
+        setLoading(true);
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Get today's session
+        const { data: sessions, error: sessionError } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('session_date', today)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (sessionError) {
+          console.error('Error loading session:', sessionError);
+          return;
+        }
+
+        if (sessions && sessions.length > 0) {
+          const session = sessions[0];
+          setSessionInfo(session);
+          
+          // Get attendance records for this session
+          const { data: records, error: recordsError } = await supabase
+            .from('attendance_records')
+            .select('*')
+            .eq('session_id', session.id)
+            .order('scan_time', { ascending: true });
+
+          if (recordsError) {
+            console.error('Error loading attendance records:', recordsError);
+            return;
+          }
+          
+          // Transform attendance records
+          const transformedRecords = (records || []).map((record: any) => ({
+            id: record.id,
+            studentName: record.student_name,
+            studentId: record.student_id,
+            scanTime: new Date(`1970-01-01T${record.scan_time}`).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            }),
+            scanDate: record.scan_date,
+            status: record.status
+          }));
+          
+          setAttendanceRecords(transformedRecords);
+        }
+      } catch (error) {
+        console.error('Error loading attendance data:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load attendance data.",
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAttendanceData();
+  }, [toast]);
 
   const filteredRecords = attendanceRecords.filter(record =>
     record.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,7 +222,11 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {filteredRecords.length === 0 ? (
+            {loading ? (
+              <div className="p-4 text-center text-muted-foreground">
+                <p>Loading attendance records...</p>
+              </div>
+            ) : filteredRecords.length === 0 ? (
               <div className="p-4 text-center text-muted-foreground">
                 <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>No attendance records found</p>
@@ -220,22 +278,32 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Course:</span>
-                <span className="font-medium">Computer Science 101</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Instructor:</span>
-                <span className="font-medium">Dr. Daniel M.</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Section:</span>
-                <span className="font-medium">CS-1A</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Date:</span>
-                <span className="font-medium">September 12, 2024</span>
-              </div>
+              {sessionInfo ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Course:</span>
+                    <span className="font-medium">{sessionInfo.course}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Instructor:</span>
+                    <span className="font-medium">{sessionInfo.instructor}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Section:</span>
+                    <span className="font-medium">{sessionInfo.section}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">College:</span>
+                    <span className="font-medium">{sessionInfo.college}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Date:</span>
+                    <span className="font-medium">{new Date(sessionInfo.session_date).toLocaleDateString()}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-muted-foreground">No active session today</p>
+              )}
             </div>
           </CardContent>
         </Card>

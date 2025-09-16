@@ -14,6 +14,8 @@ import {
   FileText
 } from "lucide-react";
 import QrScanner from "qr-scanner";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface MainDashboardProps {
   onGenerateQR: () => void;
@@ -28,26 +30,179 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
     section: "",
     course: ""
   });
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<QrScanner | null>(null);
+  const { toast } = useToast();
 
   const handleInputChange = (field: string, value: string) => {
     setSessionData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleQrScanResult = (result: QrScanner.ScanResult) => {
+  const handleQrScanResult = async (result: QrScanner.ScanResult) => {
     console.log('QR Code detected:', result.data);
-    // Play success beep
-    const successAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6Ej+a2+Jq');
-    successAudio.play().catch(() => {});
+    
+    if (!currentSessionId) {
+      toast({
+        title: "No Active Session",
+        description: "Please fill in session information first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Parse QR code data - assuming format: "StudentName|StudentID" or JSON
+      let studentName = "";
+      let studentId = "";
+      
+      if (result.data.includes('|')) {
+        const [name, id] = result.data.split('|');
+        studentName = name;
+        studentId = id;
+      } else {
+        try {
+          const parsed = JSON.parse(result.data);
+          studentName = parsed.name || parsed.studentName || "";
+          studentId = parsed.id || parsed.studentId || "";
+        } catch {
+          // Fallback: use QR data as student ID
+          studentId = result.data;
+          studentName = `Student ${result.data}`;
+        }
+      }
+
+      if (!studentName || !studentId) {
+        toast({
+          title: "Invalid QR Code",
+          description: "QR code does not contain valid student information.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Check if already scanned today
+      const today = new Date().toISOString().split('T')[0];
+      const { data: existingRecord } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('session_id', currentSessionId)
+        .eq('student_id', studentId)
+        .eq('scan_date', today)
+        .single();
+
+      if (existingRecord) {
+        toast({
+          title: "Already Recorded",
+          description: `${studentName} already scanned for today.`,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Determine if late (after 9:20 AM for example)
+      const now = new Date();
+      const cutoffTime = new Date();
+      cutoffTime.setHours(9, 20, 0, 0);
+      const status = now > cutoffTime ? 'late' : 'present';
+
+      // Save attendance record
+      const { error } = await supabase
+        .from('attendance_records')
+        .insert({
+          session_id: currentSessionId,
+          student_name: studentName,
+          student_id: studentId,
+          status: status
+        });
+
+      if (error) {
+        console.error('Error saving attendance:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save attendance record.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Play success beep
+      const successAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6Ej+a2+Jq');
+      successAudio.play().catch(() => {});
+
+      // Show success message
+      toast({
+        title: "Attendance Recorded",
+        description: `${studentName} (${studentId}) marked as ${status}.`,
+      });
+
+    } catch (error) {
+      console.error('Error processing QR scan:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process QR code.",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleQrScanError = (error: string | Error) => {
     console.log('QR scan error:', error);
   };
 
+  const createSession = async () => {
+    if (!sessionData.college || !sessionData.instructor || !sessionData.section || !sessionData.course) {
+      toast({
+        title: "Incomplete Information",
+        description: "Please fill in all session information fields.",
+        variant: "destructive"
+      });
+      return null;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('sessions')
+        .insert({
+          college: sessionData.college,
+          instructor: sessionData.instructor,
+          section: sessionData.section,
+          course: sessionData.course
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating session:', error);
+        toast({
+          title: "Error",
+          description: "Failed to create session.",
+          variant: "destructive"
+        });
+        return null;
+      }
+
+      setCurrentSessionId(data.id);
+      toast({
+        title: "Session Created",
+        description: "Ready to scan QR codes for attendance.",
+      });
+      return data.id;
+    } catch (error) {
+      console.error('Error creating session:', error);
+      return null;
+    }
+  };
+
   const toggleScanning = async () => {
     if (!isScanning) {
+      // Create session if not exists
+      let sessionId = currentSessionId;
+      if (!sessionId) {
+        sessionId = await createSession();
+        if (!sessionId) return;
+      }
+
       try {
         if (videoRef.current) {
           const qrScanner = new QrScanner(
@@ -65,6 +220,11 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
         }
       } catch (error) {
         console.error('Error starting camera:', error);
+        toast({
+          title: "Camera Error",
+          description: "Failed to access camera.",
+          variant: "destructive"
+        });
       }
     } else {
       if (qrScannerRef.current) {
