@@ -52,30 +52,38 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
     }
 
     try {
-      // Parse QR code data - assuming format: "StudentName|StudentID" or JSON
+      // Parse QR code data with better validation
       let studentName = "";
       let studentId = "";
       
+      console.log('Raw QR data:', result.data);
+      
       if (result.data.includes('|')) {
-        const [name, id] = result.data.split('|');
-        studentName = name;
-        studentId = id;
+        const parts = result.data.split('|');
+        if (parts.length >= 2) {
+          studentName = parts[0].trim();
+          studentId = parts[1].trim();
+        }
       } else {
         try {
           const parsed = JSON.parse(result.data);
-          studentName = parsed.name || parsed.studentName || "";
-          studentId = parsed.id || parsed.studentId || "";
-        } catch {
+          studentName = (parsed.name || parsed.studentName || parsed.student_name || "").toString().trim();
+          studentId = (parsed.id || parsed.studentId || parsed.student_id || "").toString().trim();
+        } catch (parseError) {
+          console.log('QR data is not JSON, using as student ID');
           // Fallback: use QR data as student ID
-          studentId = result.data;
-          studentName = `Student ${result.data}`;
+          studentId = result.data.trim();
+          studentName = `Student ${result.data.trim()}`;
         }
       }
 
+      console.log('Parsed student data:', { studentName, studentId });
+
       if (!studentName || !studentId) {
+        console.error('Invalid student data:', { studentName, studentId });
         toast({
           title: "Invalid QR Code",
-          description: "QR code does not contain valid student information.",
+          description: "QR code does not contain valid student information (name and ID required).",
           variant: "destructive"
         });
         return;
@@ -106,29 +114,61 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
       cutoffTime.setHours(9, 20, 0, 0);
       const status = now > cutoffTime ? 'late' : 'present';
 
-      // Save attendance record
-      const { error } = await supabase
+      // Save attendance record with better error handling
+      console.log('Attempting to save attendance record:', {
+        session_id: currentSessionId,
+        student_name: studentName,
+        student_id: studentId,
+        status: status
+      });
+
+      const { data: insertedRecord, error } = await supabase
         .from('attendance_records')
         .insert({
           session_id: currentSessionId,
           student_name: studentName,
           student_id: studentId,
           status: status
-        });
+        })
+        .select()
+        .single();
 
       if (error) {
-        console.error('Error saving attendance:', error);
+        console.error('Database error saving attendance:', error);
         toast({
-          title: "Error",
-          description: "Failed to save attendance record.",
+          title: "Database Error",
+          description: `Failed to save attendance: ${error.message}`,
           variant: "destructive"
         });
         return;
       }
 
-      // Play success beep
-      const successAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6Ej+a2+Jq');
-      successAudio.play().catch(() => {});
+      console.log('Successfully saved attendance record:', insertedRecord);
+
+      // Play success beep - multiple fallback methods
+      try {
+        // Method 1: Web Audio API beep
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+      } catch (audioError) {
+        // Fallback: Simple beep sound
+        const beepAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6bj+a2+Jq');
+        beepAudio.volume = 0.5;
+        beepAudio.play().catch(() => console.log('Could not play beep sound'));
+      }
 
       // Show success message
       toast({
