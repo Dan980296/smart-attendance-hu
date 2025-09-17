@@ -34,12 +34,16 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
   const generateQRImage = async (data: string): Promise<string> => {
     try {
       const qrDataURL = await QRCode.toDataURL(data, {
-        width: 256,
-        margin: 2,
+        width: 400,
+        margin: 4,
         color: {
           dark: '#000000',
           light: '#FFFFFF'
-        }
+        },
+        errorCorrectionLevel: 'M',
+        type: 'image/png',
+        quality: 0.92,
+        scale: 8
       });
       return qrDataURL;
     } catch (error) {
@@ -81,6 +85,8 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
   const handleSingleGenerate = async () => {
     if (singleStudent.name && singleStudent.id) {
       const qrData = JSON.stringify({
+        id: singleStudent.id,
+        name: singleStudent.name,
         studentId: singleStudent.id,
         studentName: singleStudent.name,
         timestamp: Date.now()
@@ -114,6 +120,8 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
       const codes = await Promise.all(
         sampleStudents.map(async (student) => {
           const qrData = JSON.stringify({
+            id: student.id,
+            name: student.name,
             studentId: student.id,
             studentName: student.name,
             timestamp: Date.now()
@@ -273,7 +281,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                         <img 
                           src={code.qrImage} 
                           alt={`QR Code for ${code.name}`}
-                          className="w-32 h-32 border rounded"
+                          className="w-48 h-48 border rounded bg-white p-2"
                         />
                         <div className="flex space-x-2">
                           <Button
