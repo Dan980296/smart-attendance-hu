@@ -13,9 +13,12 @@ import {
   ArrowLeft,
   Plus,
   File,
-  Share2
+  Share2,
+  Trash2
 } from "lucide-react";
 import QRCode from "qrcode";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface QRGeneratorProps {
   onBack: () => void;
@@ -29,6 +32,33 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
 
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [generatedCodes, setGeneratedCodes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Load existing QR codes from database
+  const loadQRCodes = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('student_qr_codes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading QR codes:', error);
+        toast.error('Failed to load existing QR codes');
+        return;
+      }
+
+      setGeneratedCodes(data || []);
+    } catch (error) {
+      console.error('Error loading QR codes:', error);
+      toast.error('Failed to load existing QR codes');
+    }
+  };
+
+  // Load QR codes on component mount
+  useEffect(() => {
+    loadQRCodes();
+  }, []);
 
   // Generate QR code image from data
   const generateQRImage = async (data: string): Promise<string> => {
@@ -84,25 +114,58 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
 
   const handleSingleGenerate = async () => {
     if (singleStudent.name && singleStudent.id) {
-      const qrData = JSON.stringify({
-        id: singleStudent.id,
-        name: singleStudent.name,
-        studentId: singleStudent.id,
-        studentName: singleStudent.name,
-        timestamp: Date.now()
-      });
-      
-      const qrImage = await generateQRImage(qrData);
-      
-      const newCode = {
-        id: singleStudent.id,
-        name: singleStudent.name,
-        qrData,
-        qrImage
-      };
-      setGeneratedCodes(prev => [...prev, newCode]);
-      // Clear the form for next manual entry
-      setSingleStudent({ name: "", id: "" });
+      setLoading(true);
+      try {
+        // Check if QR code already exists for this student
+        const { data: existing } = await supabase
+          .from('student_qr_codes')
+          .select('*')
+          .eq('student_id', singleStudent.id)
+          .single();
+
+        if (existing) {
+          toast.error(`QR code already exists for student ID: ${singleStudent.id}`);
+          setLoading(false);
+          return;
+        }
+
+        const qrData = JSON.stringify({
+          id: singleStudent.id,
+          name: singleStudent.name,
+          studentId: singleStudent.id,
+          studentName: singleStudent.name,
+          timestamp: Date.now()
+        });
+        
+        const qrImage = await generateQRImage(qrData);
+        
+        // Save to database
+        const { error } = await supabase
+          .from('student_qr_codes')
+          .insert({
+            student_id: singleStudent.id,
+            student_name: singleStudent.name,
+            qr_data: qrData,
+            qr_image: qrImage
+          });
+
+        if (error) {
+          console.error('Error saving QR code:', error);
+          toast.error('Failed to save QR code');
+          return;
+        }
+
+        toast.success(`QR code generated for ${singleStudent.name}`);
+        // Reload QR codes to show the new one
+        await loadQRCodes();
+        // Clear the form for next manual entry
+        setSingleStudent({ name: "", id: "" });
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+        toast.error('Failed to generate QR code');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -110,15 +173,31 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
     const file = event.target.files?.[0];
     if (file) {
       setBatchFile(file);
-      // Simulate batch processing
-      const sampleStudents = [
-        { id: "HU001", name: "Abebe Kebede" },
-        { id: "HU002", name: "Almaz Tadesse" },
-        { id: "HU003", name: "Dawit Haile" },
-      ];
-      
-      const codes = await Promise.all(
-        sampleStudents.map(async (student) => {
+      setLoading(true);
+      try {
+        // Simulate batch processing with sample data
+        const sampleStudents = [
+          { id: "HU001", name: "Abebe Kebede" },
+          { id: "HU002", name: "Almaz Tadesse" },
+          { id: "HU003", name: "Dawit Haile" },
+        ];
+        
+        let successCount = 0;
+        let skipCount = 0;
+
+        for (const student of sampleStudents) {
+          // Check if QR code already exists
+          const { data: existing } = await supabase
+            .from('student_qr_codes')
+            .select('*')
+            .eq('student_id', student.id)
+            .single();
+
+          if (existing) {
+            skipCount++;
+            continue;
+          }
+
           const qrData = JSON.stringify({
             id: student.id,
             name: student.name,
@@ -127,17 +206,54 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
             timestamp: Date.now()
           });
           const qrImage = await generateQRImage(qrData);
-          
-          return {
-            id: student.id,
-            name: student.name,
-            qrData,
-            qrImage
-          };
-        })
-      );
-      
-      setGeneratedCodes(codes);
+
+          // Save to database
+          const { error } = await supabase
+            .from('student_qr_codes')
+            .insert({
+              student_id: student.id,
+              student_name: student.name,
+              qr_data: qrData,
+              qr_image: qrImage
+            });
+
+          if (!error) {
+            successCount++;
+          }
+        }
+
+        toast.success(`Generated ${successCount} QR codes${skipCount > 0 ? `, skipped ${skipCount} existing` : ''}`);
+        // Reload QR codes to show the new ones
+        await loadQRCodes();
+      } catch (error) {
+        console.error('Error processing batch:', error);
+        toast.error('Failed to process batch upload');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Delete a QR code
+  const handleDeleteQRCode = async (studentId: string, studentName: string) => {
+    try {
+      const { error } = await supabase
+        .from('student_qr_codes')
+        .delete()
+        .eq('student_id', studentId);
+
+      if (error) {
+        console.error('Error deleting QR code:', error);
+        toast.error('Failed to delete QR code');
+        return;
+      }
+
+      toast.success(`Deleted QR code for ${studentName}`);
+      // Reload QR codes to update the list
+      await loadQRCodes();
+    } catch (error) {
+      console.error('Error deleting QR code:', error);
+      toast.error('Failed to delete QR code');
     }
   };
 
@@ -196,10 +312,10 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                 <Button 
                   onClick={handleSingleGenerate}
                   className="w-full bg-success hover:bg-success/90"
-                  disabled={!singleStudent.name || !singleStudent.id}
+                  disabled={!singleStudent.name || !singleStudent.id || loading}
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Generate QR Code
+                  {loading ? 'Generating...' : 'Generate QR Code'}
                 </Button>
               </CardContent>
             </Card>
@@ -245,11 +361,11 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
 
                 {generatedCodes.length > 0 && (
                   <div className="space-y-2">
-                    <Button className="w-full bg-primary hover:bg-primary/90">
+                    <Button className="w-full bg-primary hover:bg-primary/90" disabled={loading}>
                       <Download className="w-4 h-4 mr-2" />
                       Download as ZIP
                     </Button>
-                    <Button variant="outline" className="w-full">
+                    <Button variant="outline" className="w-full" disabled={loading}>
                       <FileText className="w-4 h-4 mr-2" />
                       Generate Print-Ready PDF
                     </Button>
@@ -272,21 +388,29 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                   <div key={index} className="p-4 bg-muted rounded-lg">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <p className="font-medium">{code.name}</p>
-                        <p className="text-sm text-muted-foreground">ID: {code.id}</p>
+                        <p className="font-medium">{code.student_name}</p>
+                        <p className="text-sm text-muted-foreground">ID: {code.student_id}</p>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteQRCode(code.student_id, code.student_name)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-                    {code.qrImage && (
+                    {code.qr_image && (
                       <div className="flex flex-col items-center space-y-3">
                         <img 
-                          src={code.qrImage} 
-                          alt={`QR Code for ${code.name}`}
+                          src={code.qr_image} 
+                          alt={`QR Code for ${code.student_name}`}
                           className="w-48 h-48 border rounded bg-white p-2"
                         />
                         <div className="flex space-x-2">
                           <Button
                             size="sm"
-                            onClick={() => downloadQRCode(code.qrImage, `${code.name}-qr`)}
+                            onClick={() => downloadQRCode(code.qr_image, `${code.student_name}-qr`)}
                             className="flex-1"
                           >
                             <Download className="w-4 h-4 mr-1" />
@@ -295,7 +419,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => shareQRCode(code.qrImage, code.name)}
+                            onClick={() => shareQRCode(code.qr_image, code.student_name)}
                             className="flex-1"
                           >
                             <Share2 className="w-4 h-4 mr-1" />

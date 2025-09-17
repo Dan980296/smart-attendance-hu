@@ -88,6 +88,36 @@ export type Database = {
         }
         Relationships: []
       }
+      student_qr_codes: {
+        Row: {
+          created_at: string
+          id: string
+          qr_data: string
+          qr_image: string
+          student_id: string
+          student_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          qr_data: string
+          qr_image: string
+          student_id: string
+          student_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          qr_data?: string
+          qr_image?: string
+          student_id?: string
+          student_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
