@@ -43,7 +43,8 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
     console.log('QR Code detected:', result.data);
     
     // Auto-create session if not exists and session data is available
-    if (!currentSessionId) {
+    let activeSessionId = currentSessionId;
+    if (!activeSessionId) {
       if (!sessionData.college || !sessionData.instructor || !sessionData.section || !sessionData.course) {
         toast({
           title: "Session Required",
@@ -57,6 +58,7 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
       if (!sessionId) {
         return;
       }
+      activeSessionId = sessionId;
     }
 
     try {
@@ -102,7 +104,7 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
       const { data: existingRecord } = await supabase
         .from('attendance_records')
         .select('id')
-        .eq('session_id', currentSessionId)
+        .eq('session_id', activeSessionId)
         .eq('student_id', studentId)
         .eq('scan_date', today)
         .single();
@@ -124,7 +126,7 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
 
       // Save attendance record with better error handling
       console.log('Attempting to save attendance record:', {
-        session_id: currentSessionId,
+        session_id: activeSessionId,
         student_name: studentName,
         student_id: studentId,
         status: status
@@ -133,7 +135,7 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
       const { data: insertedRecord, error } = await supabase
         .from('attendance_records')
         .insert({
-          session_id: currentSessionId,
+          session_id: activeSessionId,
           student_name: studentName,
           student_id: studentId,
           status: status
