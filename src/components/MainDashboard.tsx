@@ -42,13 +42,21 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
   const handleQrScanResult = async (result: QrScanner.ScanResult) => {
     console.log('QR Code detected:', result.data);
     
+    // Auto-create session if not exists and session data is available
     if (!currentSessionId) {
-      toast({
-        title: "No Active Session",
-        description: "Please fill in session information first.",
-        variant: "destructive"
-      });
-      return;
+      if (!sessionData.college || !sessionData.instructor || !sessionData.section || !sessionData.course) {
+        toast({
+          title: "Session Required",
+          description: "Please fill in all session information first.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      const sessionId = await createSession();
+      if (!sessionId) {
+        return;
+      }
     }
 
     try {
@@ -145,29 +153,45 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
 
       console.log('Successfully saved attendance record:', insertedRecord);
 
-      // Play success beep - multiple fallback methods
+      // Play success beep - improved audio handling
       try {
-        // Method 1: Web Audio API beep
+        // Create and play beep sound
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        // Resume audio context if suspended (required for autoplay policy)
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+        
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
         
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         
+        // Success beep: 800Hz for 0.2 seconds
         oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
         oscillator.type = 'sine';
         
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
         
         oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.3);
+        oscillator.stop(audioContext.currentTime + 0.2);
+        
+        console.log('Beep sound played successfully');
       } catch (audioError) {
-        // Fallback: Simple beep sound
-        const beepAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6bj+a2+Jq');
-        beepAudio.volume = 0.5;
-        beepAudio.play().catch(() => console.log('Could not play beep sound'));
+        console.log('Web Audio API failed, trying fallback beep');
+        // Fallback: Try HTML5 audio
+        try {
+          const beepAudio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+v3vGkdCDmR4+W6bj+a2+Jq');
+          beepAudio.volume = 0.3;
+          await beepAudio.play();
+          console.log('Fallback beep played');
+        } catch (fallbackError) {
+          console.log('All audio methods failed:', fallbackError);
+        }
       }
 
       // Show success message
