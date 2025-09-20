@@ -99,21 +99,32 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
         return;
       }
 
-      // Check if student is registered for this section
+      // Check if student is registered for this section, auto-register if not
       const { data: registeredStudent } = await supabase
         .from('student_qr_codes')
         .select('*')
         .eq('student_id', studentId)
         .eq('section', sessionData.section)
-        .single();
+        .maybeSingle();
 
       if (!registeredStudent) {
-        toast({
-          title: "Student Not Registered",
-          description: `${studentName} (${studentId}) is not registered for section ${sessionData.section}.`,
-          variant: "destructive"
-        });
-        return;
+        // Auto-register the student for this section
+        const { error: registrationError } = await supabase
+          .from('student_qr_codes')
+          .insert({
+            student_id: studentId,
+            student_name: studentName,
+            qr_data: `${studentName}|${studentId}`,
+            section: sessionData.section,
+            qr_image: '' // Will be empty for auto-registered students
+          });
+
+        if (registrationError) {
+          console.error('Error auto-registering student:', registrationError);
+          // Continue anyway - don't block attendance recording
+        } else {
+          console.log('Auto-registered student for section:', { studentName, studentId, section: sessionData.section });
+        }
       }
 
       // Check if already scanned today
