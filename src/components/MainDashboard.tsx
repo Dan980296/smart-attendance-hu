@@ -99,6 +99,23 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
         return;
       }
 
+      // Check if student is registered for this section
+      const { data: registeredStudent } = await supabase
+        .from('student_qr_codes')
+        .select('*')
+        .eq('student_id', studentId)
+        .eq('section', sessionData.section)
+        .single();
+
+      if (!registeredStudent) {
+        toast({
+          title: "Student Not Registered",
+          description: `${studentName} (${studentId}) is not registered for section ${sessionData.section}.`,
+          variant: "destructive"
+        });
+        return;
+      }
+
       // Check if already scanned today
       const today = new Date().toISOString().split('T')[0];
       const { data: existingRecord } = await supabase
@@ -118,12 +135,8 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
         return;
       }
 
-      // Determine if late - configurable cutoff time (default 10:00 AM)
-      const now = new Date();
-      const cutoffTime = new Date();
-      // Set cutoff to 10:00 AM - can be made configurable later
-      cutoffTime.setHours(10, 0, 0, 0);
-      const status = now > cutoffTime ? 'late' : 'present';
+      // Mark as present (no late status, only present/absent)
+      const status = 'present';
 
       // Save attendance record with better error handling
       console.log('Attempting to save attendance record:', {
@@ -199,8 +212,8 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
 
       // Show success message
       toast({
-        title: "Attendance Recorded",
-        description: `${studentName} (${studentId}) marked as ${status}.`,
+        title: "Attendance Recorded", 
+        description: `${studentName} (${studentId}) marked present.`,
       });
 
     } catch (error) {

@@ -27,7 +27,8 @@ interface QRGeneratorProps {
 const QRGenerator = ({ onBack }: QRGeneratorProps) => {
   const [singleStudent, setSingleStudent] = useState({
     name: "",
-    id: ""
+    id: "",
+    section: ""
   });
 
   const [batchFile, setBatchFile] = useState<File | null>(null);
@@ -129,13 +130,8 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
           return;
         }
 
-        const qrData = JSON.stringify({
-          id: singleStudent.id,
-          name: singleStudent.name,
-          studentId: singleStudent.id,
-          studentName: singleStudent.name,
-          timestamp: Date.now()
-        });
+        // Use simple pipe format for better scanning reliability
+        const qrData = `${singleStudent.name}|${singleStudent.id}`;
         
         const qrImage = await generateQRImage(qrData);
         
@@ -145,6 +141,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
           .insert({
             student_id: singleStudent.id,
             student_name: singleStudent.name,
+            section: singleStudent.section,
             qr_data: qrData,
             qr_image: qrImage
           });
@@ -159,7 +156,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
         // Reload QR codes to show the new one
         await loadQRCodes();
         // Clear the form for next manual entry
-        setSingleStudent({ name: "", id: "" });
+        setSingleStudent({ name: "", id: "", section: "" });
       } catch (error) {
         console.error('Error generating QR code:', error);
         toast.error('Failed to generate QR code');
@@ -198,13 +195,8 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
             continue;
           }
 
-          const qrData = JSON.stringify({
-            id: student.id,
-            name: student.name,
-            studentId: student.id,
-            studentName: student.name,
-            timestamp: Date.now()
-          });
+          // Use simple pipe format for better scanning reliability
+          const qrData = `${student.name}|${student.id}`;
           const qrImage = await generateQRImage(qrData);
 
           // Save to database
@@ -213,6 +205,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
             .insert({
               student_id: student.id,
               student_name: student.name,
+              section: 'Batch Import', // Default section for batch imports
               qr_data: qrData,
               qr_image: qrImage
             });
@@ -309,10 +302,19 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                     placeholder="Enter student ID"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="section">Section/Class</Label>
+                  <Input
+                    id="section"
+                    value={singleStudent.section}
+                    onChange={(e) => setSingleStudent(prev => ({ ...prev, section: e.target.value }))}
+                    placeholder="Enter section/class"
+                  />
+                </div>
                 <Button 
                   onClick={handleSingleGenerate}
                   className="w-full bg-success hover:bg-success/90"
-                  disabled={!singleStudent.name || !singleStudent.id || loading}
+                  disabled={!singleStudent.name || !singleStudent.id || !singleStudent.section || loading}
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   {loading ? 'Generating...' : 'Generate QR Code'}
@@ -390,6 +392,7 @@ const QRGenerator = ({ onBack }: QRGeneratorProps) => {
                       <div>
                         <p className="font-medium">{code.student_name}</p>
                         <p className="text-sm text-muted-foreground">ID: {code.student_id}</p>
+                        <p className="text-xs text-muted-foreground">Section: {code.section || 'Default'}</p>
                       </div>
                       <Button
                         size="sm"

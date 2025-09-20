@@ -164,57 +164,39 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
     record.studentId.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const presentCount = attendanceRecords.filter(r => r.status === "present").length;
-  const lateCount = attendanceRecords.filter(r => r.status === "late").length;
+  const presentCount = attendanceRecords.length; // All scanned students are present
+  const absentCount = 0; // Would need registered student list to calculate
 
   const handleExportCSV = () => {
-    const headers = [
-      'Student Name', 
-      'Student ID', 
-      'Status', 
-      'Scan Time', 
-      'Scan Date',
-      'Course',
-      'Instructor', 
-      'Section',
-      'College'
-    ];
+    // Create session info header
+    const sessionHeader = sessionInfo ? [
+      `Course: ${sessionInfo.course}`,
+      `Instructor: ${sessionInfo.instructor}`,
+      `Section: ${sessionInfo.section}`,
+      `College: ${sessionInfo.college}`,
+      `Date: ${new Date(sessionInfo.session_date).toLocaleDateString()}`,
+      '', // Empty line separator
+    ] : [''];
+    
+    const headers = ['Student Name', 'Student ID', 'Status', 'Scan Time', 'Scan Date'];
     
     const csvContent = [
+      ...sessionHeader,
       headers.join(','),
-      // Session info row
-      sessionInfo ? [
-        '',
-        '',
-        '',
-        '',
-        '',
-        `"${sessionInfo.course}"`,
-        `"${sessionInfo.instructor}"`,
-        `"${sessionInfo.section}"`,
-        `"${sessionInfo.college}"`
-      ].join(',') : '',
-      // Empty row separator
-      '',
-      // Attendance records
       ...attendanceRecords.map(record => [
         `"${record.studentName}"`,
         record.studentId,
         record.status,
         `"${record.scanTime}"`,
-        record.scanDate,
-        sessionInfo ? `"${sessionInfo.course}"` : '',
-        sessionInfo ? `"${sessionInfo.instructor}"` : '',
-        sessionInfo ? `"${sessionInfo.section}"` : '',
-        sessionInfo ? `"${sessionInfo.college}"` : ''
+        record.scanDate
       ].join(','))
-    ].filter(row => row !== '').join('\n');
+    ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `attendance_${sessionInfo?.course || 'session'}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `attendance_${sessionInfo?.course}_${sessionInfo?.section}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -264,9 +246,9 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
           
           <Card>
             <CardContent className="p-3 text-center">
-              <div className="w-6 h-6 bg-warning rounded-full mx-auto mb-1"></div>
-              <p className="text-2xl font-bold text-warning">{lateCount}</p>
-              <p className="text-xs text-muted-foreground">Late</p>
+              <div className="w-6 h-6 bg-muted rounded-full mx-auto mb-1"></div>
+              <p className="text-2xl font-bold text-muted-foreground">{absentCount}</p>
+              <p className="text-xs text-muted-foreground">Absent</p>
             </CardContent>
           </Card>
         </div>
@@ -327,14 +309,10 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="font-medium text-foreground">{record.studentName}</p>
                         <Badge 
-                          variant={record.status === "present" ? "default" : "secondary"}
-                          className={
-                            record.status === "present" 
-                              ? "bg-success text-success-foreground" 
-                              : "bg-warning text-warning-foreground"
-                          }
+                          variant="default"
+                          className="bg-success text-success-foreground"
                         >
-                          {record.status === "present" ? "Present" : "Late"}
+                          Present
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">ID: {record.studentId}</p>

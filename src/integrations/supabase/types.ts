@@ -94,6 +94,7 @@ export type Database = {
           id: string
           qr_data: string
           qr_image: string
+          section: string | null
           student_id: string
           student_name: string
           updated_at: string
@@ -103,6 +104,7 @@ export type Database = {
           id?: string
           qr_data: string
           qr_image: string
+          section?: string | null
           student_id: string
           student_name: string
           updated_at?: string
@@ -112,6 +114,7 @@ export type Database = {
           id?: string
           qr_data?: string
           qr_image?: string
+          section?: string | null
           student_id?: string
           student_name?: string
           updated_at?: string
