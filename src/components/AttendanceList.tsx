@@ -80,19 +80,46 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
             return;
           }
           
-          // Transform attendance records
-          const transformedRecords = (records || []).map((record: any) => ({
-            id: record.id,
-            studentName: record.student_name,
-            studentId: record.student_id,
-            scanTime: new Date(`1970-01-01T${record.scan_time}`).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            }),
-            scanDate: record.scan_date,
-            status: record.status
-          }));
+          // Transform attendance records with proper date handling
+          const transformedRecords = (records || []).map((record: any) => {
+            // Handle different time formats from database
+            let formattedTime = 'Unknown';
+            try {
+              if (record.scan_time) {
+                // If scan_time is a time string like "14:30:00+00"
+                const timeStr = record.scan_time.toString();
+                if (timeStr.includes(':')) {
+                  const [hours, minutes] = timeStr.split(':');
+                  const date = new Date();
+                  date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                  formattedTime = date.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  });
+                }
+              }
+            } catch (error) {
+              console.error('Error parsing scan time:', error, record.scan_time);
+              // Fallback to created_at timestamp
+              if (record.created_at) {
+                formattedTime = new Date(record.created_at).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                });
+              }
+            }
+            
+            return {
+              id: record.id,
+              studentName: record.student_name,
+              studentId: record.student_id,
+              scanTime: formattedTime,
+              scanDate: record.scan_date,
+              status: record.status
+            };
+          });
           
           setAttendanceRecords(transformedRecords);
         }
@@ -109,6 +136,27 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
     };
 
     loadAttendanceData();
+
+    // Set up real-time subscription for attendance updates
+    const channel = supabase
+      .channel('attendance-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'attendance_records'
+        },
+        () => {
+          // Reload data when new attendance record is added
+          loadAttendanceData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [toast]);
 
   const filteredRecords = attendanceRecords.filter(record =>
@@ -120,27 +168,62 @@ const AttendanceList = ({ onBack }: AttendanceListProps) => {
   const lateCount = attendanceRecords.filter(r => r.status === "late").length;
 
   const handleExportCSV = () => {
-    const headers = ['Student Name', 'Student ID', 'Status', 'Scan Time', 'Scan Date'];
+    const headers = [
+      'Student Name', 
+      'Student ID', 
+      'Status', 
+      'Scan Time', 
+      'Scan Date',
+      'Course',
+      'Instructor', 
+      'Section',
+      'College'
+    ];
+    
     const csvContent = [
       headers.join(','),
+      // Session info row
+      sessionInfo ? [
+        '',
+        '',
+        '',
+        '',
+        '',
+        `"${sessionInfo.course}"`,
+        `"${sessionInfo.instructor}"`,
+        `"${sessionInfo.section}"`,
+        `"${sessionInfo.college}"`
+      ].join(',') : '',
+      // Empty row separator
+      '',
+      // Attendance records
       ...attendanceRecords.map(record => [
         `"${record.studentName}"`,
         record.studentId,
         record.status,
         `"${record.scanTime}"`,
-        record.scanDate
+        record.scanDate,
+        sessionInfo ? `"${sessionInfo.course}"` : '',
+        sessionInfo ? `"${sessionInfo.instructor}"` : '',
+        sessionInfo ? `"${sessionInfo.section}"` : '',
+        sessionInfo ? `"${sessionInfo.college}"` : ''
       ].join(','))
-    ].join('\n');
+    ].filter(row => row !== '').join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `attendance_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `attendance_${sessionInfo?.course || 'session'}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    
+    toast({
+      title: "Export Complete",
+      description: "Attendance data exported successfully with session information.",
+    });
   };
 
   return (

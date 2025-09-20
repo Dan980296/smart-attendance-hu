@@ -118,10 +118,11 @@ const MainDashboard = ({ onGenerateQR, onViewAttendance }: MainDashboardProps) =
         return;
       }
 
-      // Determine if late (after 9:20 AM for example)
+      // Determine if late - configurable cutoff time (default 10:00 AM)
       const now = new Date();
       const cutoffTime = new Date();
-      cutoffTime.setHours(9, 20, 0, 0);
+      // Set cutoff to 10:00 AM - can be made configurable later
+      cutoffTime.setHours(10, 0, 0, 0);
       const status = now > cutoffTime ? 'late' : 'present';
 
       // Save attendance record with better error handling
